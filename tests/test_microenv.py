@@ -33,14 +33,14 @@ class TestMicroEnv(unittest.TestCase):
 
     def test_privacy_enforcement_get(self):
         # get with caller on a private key should raise
-        with self.assertRaises(PermissionError):
+        with self.assertRaises(KeyError):
             _ = self.env.get("secret", caller="user")
         # direct face read bypasses privacy
         self.assertEqual(self.face.secret, "top-secret")
 
     def test_privacy_enforcement_set(self):
         # set with caller on a private key should raise
-        with self.assertRaises(PermissionError):
+        with self.assertRaises(KeyError):
             self.env.set("secret", "exposed!", caller="user")
         # direct face write bypasses privacy
         self.face.secret = "exposed!"
@@ -108,6 +108,39 @@ class TestMicroEnv(unittest.TestCase):
         # we can set a number into a string-typed field without error
         self.env.set("secret", 555, caller=None)
         self.assertEqual(self.face.secret, 555)
+
+    def test_readme_example(self):
+        # Based on README quickstart
+        data = {"public": 1, "secret": "s3cr3t"}
+        descriptor = {
+            "children": [
+                {"key": "public", "type": "number"},
+                {"key": "secret", "type": "string", "private": True},
+            ]
+        }
+        env = microenv(obj=data.copy(), descriptor=descriptor)
+        face = env.face
+
+        # Basic get / set via the face
+        self.assertEqual(face.public, 1)
+        face.public = 42
+        self.assertEqual(env.data["public"], 42)
+
+        # Privacy: direct .secret bypasses privacy checks on the face
+        self.assertEqual(face.secret, "s3cr3t")
+        face.secret = "new!"
+        self.assertEqual(env.data["secret"], "new!")
+
+        # Async “next” subscription: await the next update to 'public'
+        async def waiter():
+            fut = env.get("public", next_=True)
+            return await fut
+
+        task = self.loop.create_task(waiter())
+        # schedule a change immediately
+        self.loop.call_soon(lambda: setattr(face, "public", 99))
+        result = self.loop.run_until_complete(task)
+        self.assertEqual(result, 99)
 
 
 if __name__ == "__main__":

@@ -12,28 +12,48 @@ class MicroEnv:
         descriptor,
         face,
         data,
-        get,
+        get_,
         set_,
         _awaiters,
         _get_awaiter,
-        _pending_get,
     ):
         self.descriptor = descriptor
         self.face = face
         self.data = data
-        self.get = get
+        self.get = get_
         self.set = set_
         self._awaiters = _awaiters
         self._get_awaiter = _get_awaiter
-        self._pending_get = _pending_get
 
 
 class Awaiter:
     def __init__(self):
+        # Create a Future on the current loop
         self._future = asyncio.get_event_loop().create_future()
 
+    @property
+    def promise(self):
+        return self._future
+
     def resolve(self, value):
-        if not self._future.done():
+        if self._future.done():
+            return
+
+        if hasattr(value, "__await__"):
+            loop = asyncio.get_event_loop()
+
+            async def _chain():
+                try:
+                    res = await value
+                except Exception as e:
+                    if not self._future.done():
+                        self._future.set_exception(e)
+                else:
+                    if not self._future.done():
+                        self._future.set_result(res)
+
+            loop.create_task(_chain())
+        else:
             self._future.set_result(value)
 
     def reject(self, reason):
@@ -41,10 +61,6 @@ class Awaiter:
             self._future.set_exception(
                 reason if isinstance(reason, Exception) else Exception(str(reason))
             )
-
-    @property
-    def promise(self):
-        return self._future
 
     def then(self, cb):
         self._future.add_done_callback(lambda fut: cb(fut.result()))
@@ -75,10 +91,7 @@ def microenv(obj=None, descriptor=None, overrides=None):
 
     if "children" not in descriptor:
         children = [
-            {
-                "key": k,
-                "type": ("unknown" if k not in obj else infer_type(obj[k])),
-            }
+            {"key": k, "type": ("unknown" if k not in obj else infer_type(obj[k]))}
             for k in obj
         ]
         descriptor = {
@@ -87,44 +100,59 @@ def microenv(obj=None, descriptor=None, overrides=None):
             **descriptor,
             "children": children,
         }
+
     children_map = {c["key"]: c for c in descriptor.get("children", [])}
     _awaiters = {}
-    _pending_get = {}
 
     def _get_awaiter(key):
         if key not in _awaiters:
             _awaiters[key] = Awaiter()
         return _awaiters[key]
 
-    def get(key, caller=None, next_=False):
-        child_descriptor = children_map.get(key)
-        if not child_descriptor:
+    def get_(key, caller=None, next_=False):
+        cd = children_map.get(key)
+        if not cd or (cd.get("private") and caller):
             raise KeyError(f'microenv: get non-existent property "{key}"')
-        # privacy: only matter if the key is private and a caller is supplied
-        if child_descriptor.get("private") and caller:
-            raise PermissionError(f'microenv: get private property "{key}"')
-        # async “next” request
         if next_:
-            return _pending_get.setdefault(key, _get_awaiter(key).promise)
-        # otherwise just return the current value
+            return _get_awaiter(key).promise
+        if "get" in overrides:
+            return overrides["get"](key, _ref, caller)
         return obj.get(key)
 
     def set_(key, value, caller=None):
-        child_descriptor = children_map.get(key)
-        if not child_descriptor:
+        cd = children_map.get(key)
+        if not cd or (cd.get("private") and caller):
             raise KeyError(f'microenv: set non-existent property "{key}"')
-        if caller and child_descriptor.get("private"):
-            raise PermissionError(f'microenv: set private property "{key}"')
-        if key in _awaiters:
-            _awaiters[key].resolve(value)
-        obj[key] = value
-        return value
+
+        if "set" in overrides:
+            result = overrides["set"](key, value, _ref, caller)
+        else:
+            result = value
+
+        if hasattr(result, "__await__"):
+            if key in _awaiters:
+                loop = asyncio.get_event_loop()
+                task = loop.create_task(result)
+
+                if key in _awaiters:
+                    _awaiters[key].resolve(task)
+
+                async def _wrapper():
+                    return await task
+
+                result = _wrapper()
+        else:
+            if key in _awaiters:
+                _awaiters[key].resolve(result)
+
+        obj[key] = result
+        return result
 
     class Face:
         __slots__ = ()
 
         def __getattr__(self, key):
-            v = get(key)
+            v = get_(key)
             if callable(v):
                 return lambda payload, caller=None: v(payload, caller)
             return v
@@ -138,13 +166,13 @@ def microenv(obj=None, descriptor=None, overrides=None):
         def __setitem__(self, key, value):
             self.__setattr__(key, value)
 
-    return MicroEnv(
+    _ref = MicroEnv(
         descriptor=descriptor,
         face=Face(),
         data=obj,
-        get=get,
+        get_=get_,
         set_=set_,
         _awaiters=_awaiters,
         _get_awaiter=_get_awaiter,
-        _pending_get=_pending_get,
     )
+    return _ref
