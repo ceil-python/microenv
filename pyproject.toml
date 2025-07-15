@@ -1,11 +1,12 @@
 [project]
 name = "microenv"
-version = "0.0.4"
+version = "0.0.5"
 authors = [{ name = "Sergey Shkatula", email = "sergey@ceil.dev" }]
 description = "Functional dependency paradigm"
 keywords = ["micro", "env", "environment", "microenv"]
 requires-python = ">=3.7"
 license = "MIT"
+readme = "README.md"
 
 [build-system]
 requires = ["hatchling >= 1.26"]
