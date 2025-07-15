@@ -1,6 +1,6 @@
 [project]
 name = "microenv"
-version = "0.0.5"
+version = "0.0.6"
 authors = [{ name = "Sergey Shkatula", email = "sergey@ceil.dev" }]
 description = "Functional dependency paradigm"
 keywords = ["micro", "env", "environment", "microenv"]
