@@ -1,7 +1,6 @@
 # microenv
 
 [![PyPI version](https://img.shields.io/pypi/v/microenv.svg)](https://pypi.org/project/microenv/)
-[![GitHub release](https://img.shields.io/github/v/release/ceil-python/microenv.svg?logo=github)](https://github.com/ceil-python/microenv/releases)
 [![License](https://img.shields.io/pypi/l/supply-demand.svg)](LICENSE)
 
 A minimal Python environment abstraction with privacy controls and async “next” subscriptions.
