@@ -1,6 +1,6 @@
 [project]
 name = "microenv"
-version = "0.1.0"
+version = "0.1.1"
 authors = [{ name = "Sergey Shkatula", email = "sergey@ceil.dev" }]
 description = "Functional dependency paradigm"
 keywords = ["micro", "env", "environment", "microenv"]
@@ -13,7 +13,7 @@ requires = ["hatchling >= 1.26"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/MicroEnv"]
+packages = ["src/microenv"]
 
 [project.urls]
 Homepage = "https://github.com/ceil-python/microenv"
