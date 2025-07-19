@@ -86,6 +86,8 @@ def microenv(obj=None, descriptor=None, overrides=None):
             return "object"
         elif hasattr(v, "__await__"):
             return "promise"
+        elif inspect.isfunction(v):
+            return "function"
         else:
             return "unknown"
 

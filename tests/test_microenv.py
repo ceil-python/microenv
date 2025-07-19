@@ -92,7 +92,15 @@ class TestMicroEnv(unittest.TestCase):
 
     def test_descriptor_inference_when_missing(self):
         # If no descriptor is provided, children are inferred from the obj
-        obj = {"a": None, "b": "str", "c": 3.14, "d": True, "e": [1, 2], "f": {"x": 1}}
+        obj = {
+            "a": None,
+            "b": "str",
+            "c": 3.14,
+            "d": True,
+            "e": [1, 2],
+            "f": {"x": 1},
+            "g": lambda x: x,
+        }
         env2 = microenv(obj=obj, descriptor=None)
         # Build a map of key→type
         inferred = {c["key"]: c["type"] for c in env2.descriptor["children"]}
@@ -102,6 +110,7 @@ class TestMicroEnv(unittest.TestCase):
         self.assertEqual(inferred["d"], "boolean")
         self.assertEqual(inferred["e"], "array")
         self.assertEqual(inferred["f"], "object")
+        self.assertEqual(inferred["g"], "function")
 
     def test_descriptor_unenforced_type(self):
         # Descriptor types are not enforced at runtime
