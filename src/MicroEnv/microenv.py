@@ -154,10 +154,7 @@ def microenv(obj=None, descriptor=None, overrides=None):
         __slots__ = ()
 
         def __getattr__(self, key):
-            v = get_(key)
-            if callable(v):
-                return lambda payload, caller=None: v(payload, caller)
-            return v
+            return get_(key)
 
         def __setattr__(self, key, value):
             set_(key, value)
