@@ -12,11 +12,11 @@ class TestCustomGetSetAsync(unittest.TestCase):
         self.descriptor = {"children": [{"key": "public", "type": "number"}]}
 
         # override get: synchronous, just tags the key
-        def custom_get(key, env_ref, caller):
+        def custom_get(key, env_ref, caller=None, next_=False):
             return f"got-{key}"
 
         # override set: asynchronous, multiplies by 10 after a tiny delay
-        async def custom_set(key, value, env_ref, caller):
+        async def custom_set(key, value, env_ref, caller=None):
             # simulate asynchronous work in uasyncio/asyncio
             await asyncio.sleep(1)
             return value * 10
@@ -61,7 +61,7 @@ class TestCustomGetSetAsync(unittest.TestCase):
 
     def test_awaiter_chains_through_async_set(self):
         # subscribe to next update
-        fut = self.env.get("public", next_=True)
+        fut = self.env.get("public", None, next_=True)
         self.assertFalse(fut.done())
 
         # call set (returns coroutine)

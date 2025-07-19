@@ -118,7 +118,7 @@ def microenv(obj=None, descriptor=None, overrides=None):
         if next_:
             return _get_awaiter(key).promise
         if "get" in overrides:
-            return overrides["get"](key, _ref, caller)
+            return overrides["get"](key, _ref, caller, next_)
         return obj.get(key)
 
     def set_(key, value, caller=None):
