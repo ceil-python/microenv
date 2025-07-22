@@ -44,37 +44,20 @@ class TestCustomGetSetAsync(unittest.TestCase):
         # original data remains untouched
         self.assertEqual(self.env.data["public"], 1)
 
-    def test_custom_set_returns_coroutine_and_stores_it(self):
-        # calling set returns a coroutine (because custom_set is async)
-        coro = self.env.set("public", 2)
-        self.assertTrue(
-            asyncio.iscoroutine(coro),
-            "env.set must return the coroutine from custom_set",
-        )
-
-        # before awaiting, obj['public'] holds that coroutine object
-        self.assertIs(self.env.data["public"], coro)
-
-        # awaiting the coroutine yields the transformed value
-        result = self.loop.run_until_complete(coro)
-        self.assertEqual(result, 20)
-
     def test_awaiter_chains_through_async_set(self):
         # subscribe to next update
-        fut = self.env.get("public", None, next_=True)
-        self.assertFalse(fut.done())
+        get_coro = self.env.get("public", None, next_=True)
+        self.assertTrue(asyncio.iscoroutine(get_coro))
 
         # call set (returns coroutine)
-        set_coro = self.env.set("public", 3)
-        self.assertTrue(asyncio.iscoroutine(set_coro))
-        self.assertFalse(fut.done())
+        set_fut = self.env.set("public", 3)
+        self.assertTrue(asyncio.isfuture(set_fut))
 
         # first, run the override-set coroutine itself
-        set_result = self.loop.run_until_complete(set_coro)
+        set_result = self.loop.run_until_complete(set_fut)
         self.assertEqual(set_result, 30)
-        self.assertTrue(fut.done())
 
-        final = self.loop.run_until_complete(fut)
+        final = self.loop.run_until_complete(get_coro)
         self.assertEqual(final, 30)
 
     def test_face_after_set_still_uses_custom_get(self):

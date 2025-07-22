@@ -1,9 +1,21 @@
-import inspect
+import asyncio
 
 try:
-    import uasyncio as asyncio
-except ModuleNotFoundError:
-    import asyncio
+    import inspect
+
+    is_awaitable = inspect.isawaitable
+except ImportError:
+    # MicroPython
+    def is_awaitable(val):
+        is_awaitable = True
+        try:
+            return getattr(val, "__await__")
+        except:
+            try:
+                getattr(val, "__next__")
+            except:
+                is_awaitable = False
+        return is_awaitable
 
 
 class MicroEnv:
@@ -14,56 +26,38 @@ class MicroEnv:
         data,
         get_,
         set_,
-        _awaiters,
-        _get_awaiter,
     ):
         self.descriptor = descriptor
         self.face = face
         self.data = data
         self.get = get_
         self.set = set_
-        self._awaiters = _awaiters
-        self._get_awaiter = _get_awaiter
 
 
-class Awaiter:
+class MicroAwaitQueue:
     def __init__(self):
-        # Create a Future on the current loop
-        self._future = asyncio.get_event_loop().create_future()
+        self._waiters = []
+        self._result = None
+        self._done = None
 
-    @property
-    def promise(self):
-        return self._future
+    async def wait(self):
+        if self._done:
+            return self._result
 
-    def resolve(self, value):
-        if self._future.done():
+        ev = asyncio.Event()
+        self._waiters.append(ev)
+        await ev.wait()
+        return self._result
+
+    def resolve_all(self, value):
+        if self._done:
             return
 
-        if hasattr(value, "__await__"):
-            loop = asyncio.get_event_loop()
-
-            async def _chain():
-                try:
-                    res = await value
-                except Exception as e:
-                    if not self._future.done():
-                        self._future.set_exception(e)
-                else:
-                    if not self._future.done():
-                        self._future.set_result(res)
-
-            loop.create_task(_chain())
-        else:
-            self._future.set_result(value)
-
-    def reject(self, reason):
-        if not self._future.done():
-            self._future.set_exception(
-                reason if isinstance(reason, Exception) else Exception(str(reason))
-            )
-
-    def then(self, cb):
-        self._future.add_done_callback(lambda fut: cb(fut.result()))
+        self._done = True
+        self._result = value
+        for ev in self._waiters:
+            ev.set()
+        self._waiters.clear()
 
 
 def microenv(obj=None, descriptor=None, overrides=None):
@@ -86,7 +80,7 @@ def microenv(obj=None, descriptor=None, overrides=None):
             return "object"
         elif hasattr(v, "__await__"):
             return "promise"
-        elif inspect.isfunction(v):
+        elif callable(v):
             return "function"
         else:
             return "unknown"
@@ -96,27 +90,22 @@ def microenv(obj=None, descriptor=None, overrides=None):
             {"key": k, "type": ("unknown" if k not in obj else infer_type(obj[k]))}
             for k in obj
         ]
-        descriptor = {
-            "key": "environment",
-            "type": "environment",
-            **descriptor,
-            "children": children,
-        }
+        new_descriptor = {"key": "environment", "type": "environment"}
+        new_descriptor.update(descriptor)
+        new_descriptor["children"] = children
+        descriptor = new_descriptor
 
     children_map = {c["key"]: c for c in descriptor.get("children", [])}
     _awaiters = {}
-
-    def _get_awaiter(key):
-        if key not in _awaiters:
-            _awaiters[key] = Awaiter()
-        return _awaiters[key]
 
     def get_(key, caller=None, next_=False):
         cd = children_map.get(key)
         if not cd or (cd.get("private") and caller):
             raise KeyError(f'microenv: get non-existent property "{key}"')
         if next_:
-            return _get_awaiter(key).promise
+            if key not in _awaiters:
+                _awaiters[key] = MicroAwaitQueue()
+            return _awaiters[key].wait()
         if "get" in overrides:
             return overrides["get"](key, _ref, caller, next_)
         return obj.get(key)
@@ -131,23 +120,20 @@ def microenv(obj=None, descriptor=None, overrides=None):
         else:
             result = value
 
-        if hasattr(result, "__await__"):
-            if key in _awaiters:
-                loop = asyncio.get_event_loop()
-                task = loop.create_task(result)
+        if is_awaitable(result):
 
+            async def resolver():
+                resolved = await result
+                obj[key] = resolved
                 if key in _awaiters:
-                    _awaiters[key].resolve(task)
+                    _awaiters[key].resolve_all(resolved)
+                return resolved
 
-                async def _wrapper():
-                    return await task
-
-                result = _wrapper()
+            return asyncio.get_event_loop().create_task(resolver())
         else:
+            obj[key] = result
             if key in _awaiters:
-                _awaiters[key].resolve(result)
-
-        obj[key] = result
+                _awaiters[key].resolve_all(result)
         return result
 
     class Face:
@@ -171,7 +157,5 @@ def microenv(obj=None, descriptor=None, overrides=None):
         data=obj,
         get_=get_,
         set_=set_,
-        _awaiters=_awaiters,
-        _get_awaiter=_get_awaiter,
     )
     return _ref

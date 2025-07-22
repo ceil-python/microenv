@@ -72,23 +72,24 @@ class TestMicroEnv(unittest.TestCase):
         self.assertEqual(self.env.get("public", caller="u"), 1)
 
     def test_await_next_value_single_subscriber(self):
-        fut = self.env.get("public", caller="u", next_=True)
+        coro = self.env.get("public", caller="u", next_=True)
 
-        self.assertIs(self.env.get("public", caller="u", next_=True), fut)
+        self.assertTrue(asyncio.iscoroutine(coro))
         self.env.set("public", 42)
 
-        result = self.loop.run_until_complete(fut)
+        result = self.loop.run_until_complete(coro)
         self.assertEqual(result, 42)
 
     def test_multiple_next_subscribers_share_future(self):
         # two calls to next_ before set should get the same Future
         fut1 = self.env.get("public", caller="u", next_=True)
         fut2 = self.env.get("public", caller="u", next_=True)
-        self.assertIs(fut1, fut2)
         # resolve
         self.env.set("public", 123)
-        r = self.loop.run_until_complete(fut2)
-        self.assertEqual(r, 123)
+        r1 = self.loop.run_until_complete(fut1)
+        r2 = self.loop.run_until_complete(fut2)
+        self.assertEqual(r1, 123)
+        self.assertEqual(r2, 123)
 
     def test_descriptor_inference_when_missing(self):
         # If no descriptor is provided, children are inferred from the obj
